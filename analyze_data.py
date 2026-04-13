@@ -14,6 +14,8 @@ import argparse
 import os
 from pathlib import Path
 from typing import Dict, Any, Tuple
+from scipy.stats import kstest, ks_2samp
+from datetime import datetime
 
 os.environ.setdefault("MPLCONFIGDIR", "/tmp/matplotlib")
 import matplotlib.pyplot as plt
@@ -82,9 +84,11 @@ class DataQualityEvaluator:
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser("Check data quality, auto EDA")
 
-    parser.add_argument("--input", type=str, required=True)
-    parser.add_argument("--output_dir", type=str, required=True)
-    parser.add_argument("--seed", type=int, default=42)
+    parser.add_argument("--input", type=str, required=True, help="Path to .csv file or dir with .csv files containing data.")
+    parser.add_argument("--output_dir", type=str, required=True, help="Path to dir where reports will be saved.")
+    parser.add_argument("--seed", type=int, default=42, help="Random seed for reproducibility.")
+
+    parser.add_argument("--prev_data", type=str, help="Previous dataset. Required to monitor data drift")
 
     return parser.parse_args()
 
@@ -132,6 +136,42 @@ def save_data(df: pd.DataFrame, path: str) -> str:
 
     df_to_save.to_csv(save_path, index=False)
     return str(save_path)
+
+
+def kolmogorov_smirnov(prev_df:pd.DataFrame, df: pd.DataFrame, col: str, output_path: str = None):
+    sample1, sample2 = prev_df[col].tolist(), df[col].tolist()
+    ks_statistic, p_value = ks_2samp(sample1, sample2, alternative='two-sided', mode='auto')
+
+    alpha = 0.05
+    drift_detected = p_value < alpha
+
+    if output_path is not None:
+        plt.figure(figsize=(8, 5))
+        plt.hist(sample1, bins=25, density=True, alpha=0.6, label="Old data")
+        plt.hist(sample2, bins=25, density=True, alpha=0.6, label="Current data")
+        plt.title("Two-Sample Kolmogorov-Smirnov Test")
+        plt.xlabel("Value")
+        plt.ylabel("Density")
+        plt.legend()
+        plt.tight_layout()
+        plt.savefig(output_path + f'/kstest_{col}.png', dpi=120)
+        plt.close()
+
+    return ks_statistic, p_value, drift_detected
+
+
+def monitor_drift(prev_df: pd.DataFrame, df: pd.DataFrame, output_path: str = None) -> Tuple[float, float, float]:
+    test_cols = ['INSURED_VALUE', 'PREMIUM', 'CLAIM_PAID', 'USAGE', 'TYPE_VEHICLE']
+    drift_results = {}
+    for col in test_cols:
+        ks_statistic, p_value, drift_detected = kolmogorov_smirnov(prev_df, df, col, output_path)
+        drift_results[col] = {
+            'ks_statistic': ks_statistic,
+            'p_value': p_value,
+            'drift_detected': drift_detected
+        }
+
+    return drift_results
 
 
 def analyze(df: pd.DataFrame) -> Tuple[pd.DataFrame, Dict[str, Any]]:
@@ -227,10 +267,17 @@ def main():
     df = load_data(args.input)
     df_clean, report = analyze(df)
 
-    output_dir = Path(args.output_dir)
+    output_dir = Path(args.output_dir + f'/report_{str(datetime.now().isoformat())}')
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    clean_data_path = save_data(df_clean, args.output_dir)
+    if args.prev_data is not None:
+        prev_df = load_data(args.prev_data)
+        drift_results = monitor_drift(prev_df, df, str(output_dir))
+        drift_report_path = output_dir / "drift_report.json"
+        with open(drift_report_path, "w", encoding="utf-8") as f:
+            json.dump(drift_results, f, ensure_ascii=False, indent=2, default=_json_default)
+
+    clean_data_path = save_data(df_clean, output_dir)
     eda_plot_path = str(output_dir / "eda_top_categories.png")
     report["eda"] = DataQualityEvaluator.EDA(df_clean, eda_plot_path)
 
