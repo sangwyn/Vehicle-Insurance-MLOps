@@ -138,7 +138,7 @@ def save_data(df: pd.DataFrame, path: str) -> str:
     return str(save_path)
 
 
-def kolmogorov_smirnov(prev_df:pd.DataFrame, df: pd.DataFrame, col: str, output_path: str = None):
+def kolmogorov_smirnov(prev_df:pd.DataFrame, df: pd.DataFrame, col: str, output_path: str = None) -> Tuple[float, float, float]:
     sample1, sample2 = prev_df[col].tolist(), df[col].tolist()
     ks_statistic, p_value = ks_2samp(sample1, sample2, alternative='two-sided', mode='auto')
 
@@ -160,7 +160,7 @@ def kolmogorov_smirnov(prev_df:pd.DataFrame, df: pd.DataFrame, col: str, output_
     return ks_statistic, p_value, drift_detected
 
 
-def monitor_drift(prev_df: pd.DataFrame, df: pd.DataFrame, output_path: str = None) -> Tuple[float, float, float]:
+def monitor_drift(prev_df: pd.DataFrame, df: pd.DataFrame, output_path: str = None) -> Dict[str, Any]:
     test_cols = ['INSURED_VALUE', 'PREMIUM', 'CLAIM_PAID', 'USAGE', 'TYPE_VEHICLE']
     drift_results = {}
     for col in test_cols:
@@ -174,7 +174,32 @@ def monitor_drift(prev_df: pd.DataFrame, df: pd.DataFrame, output_path: str = No
     return drift_results
 
 
+def feature_engineering(df: pd.DataFrame):
+    # Insurance duration (days)
+    df['insr_duration'] = (df['INSR_END'] - df['INSR_BEGIN']).dt.days
+    # Insurance season
+    df['insr_begin_season'] = pd.cut(
+        (df['INSR_BEGIN'].dt.month % 12) + 1, 
+        bins=[0, 3, 6, 9, 12], 
+        labels=['Winter', 'Spring', 'Summer', 'Autumn']
+    )
+    df['insr_end_season'] = pd.cut(
+        (df['INSR_END'].dt.month % 12) + 1, 
+        bins=[0, 3, 6, 9, 12], 
+        labels=['Winter', 'Spring', 'Summer', 'Autumn']
+    )
+    # 1000 * Premium / Insured value ratio
+    df['prem_insr_ratio'] = 1000 * df['PREMIUM'] / df['INSURED_VALUE']
+
+    return df
+
+
 def analyze(df: pd.DataFrame) -> Tuple[pd.DataFrame, Dict[str, Any]]:
+    old_features = set(df.columns.tolist())
+    df = feature_engineering(df)
+    new_features = set(df.columns.tolist()) - old_features
+    new_features = list(new_features)
+    
     quality_before = {
         "completeness": DataQualityEvaluator.completeness(df),
         "validity": DataQualityEvaluator.validity(df),
@@ -240,6 +265,7 @@ def analyze(df: pd.DataFrame) -> Tuple[pd.DataFrame, Dict[str, Any]]:
 
     report = {
         "thresholds": thresholds,
+        "new_features": new_features,
         "checks_before_cleaning": checks,
         "quality_before_cleaning": quality_before,
         "quality_after_cleaning": quality_after,
