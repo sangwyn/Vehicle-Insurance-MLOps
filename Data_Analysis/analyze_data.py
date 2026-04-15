@@ -40,7 +40,7 @@ def analyze_and_clean(config):
 
     print(12312312123)
 
-    ts_dir = Path(logs) / f"report_{datetime.now().isoformat().replace(':', '-')}"
+    ts_dir = Path(logs) / f"anal_report_{datetime.now().isoformat().replace(':', '-')}"
     ts_dir.mkdir(parents=True, exist_ok=True)
 
     # clean → SQLite

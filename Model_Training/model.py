@@ -8,29 +8,21 @@ kNN или дерево решений).
 import pandas as pd
 import json
 import numpy as np
-import argparse
-import os
 from pathlib import Path
-from typing import Dict, Any, Tuple, List
+from typing import Dict, Any, Tuple
 from datetime import datetime
 
 import joblib
 from sklearn.linear_model import SGDRegressor
 from sklearn.neighbors import KNeighborsRegressor
 from sklearn.tree import DecisionTreeRegressor
-from sklearn.compose import ColumnTransformer
-from sklearn.impute import SimpleImputer
 from sklearn.model_selection import GridSearchCV
-from sklearn.model_selection import train_test_split
 from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
 from sklearn.pipeline import Pipeline
-from sklearn.preprocessing import OneHotEncoder
-from sklearn.preprocessing import MinMaxScaler, StandardScaler
 
 from utils import load_config
 
 
-SUPPORTED_SCALERS = ['minmax', 'standard']
 SUPPORTED_MODELS = ['lr', 'knn', 'dt']
 
 HPARAMS = {
@@ -55,57 +47,6 @@ def _get_regressor(model_name: str, hparams: Dict[str, Any], seed: int):
     raise ValueError(f"Unrecognized model name: {model_name}")
 
 
-def _get_scaler(scaler_name: str):
-    if scaler_name == "minmax":
-        return MinMaxScaler()
-    if scaler_name == "standard":
-        return StandardScaler()
-    raise ValueError(f"Unsupported scaler name: {scaler_name}. Supported: {SUPPORTED_SCALERS}")
-
-
-def _build_pipeline(model_name: str, scaler_name: str, X_train: pd.DataFrame, hparams: Dict[str, Any], seed: int) -> Pipeline:
-    regressor = _get_regressor(model_name, hparams, seed)
-
-    num_cols = X_train.select_dtypes(include=[np.number]).columns.tolist()
-    cat_cols = [c for c in X_train.columns if c not in num_cols]
-
-    transformers = []
-    if num_cols:
-        transformers.append(
-            (
-                "num",
-                Pipeline(
-                    steps=[
-                        ("imputer", SimpleImputer(strategy="median")),
-                        ("scaler", _get_scaler(scaler_name))
-                    ]
-                ),
-                num_cols
-            )
-        )
-    if cat_cols:
-        transformers.append(
-            (
-                "cat",
-                Pipeline(
-                    steps=[
-                        ("imputer", SimpleImputer(strategy="most_frequent")),
-                        ("onehot", OneHotEncoder(handle_unknown="ignore"))
-                    ]
-                ),
-                cat_cols
-            )
-        )
-
-    preprocessor = ColumnTransformer(transformers=transformers)
-    return Pipeline(
-        steps=[
-            ("preprocessor", preprocessor),
-            ("regressor", regressor)
-        ]
-    )
-
-
 def evaluate_model(model: Pipeline, X_train: pd.DataFrame, X_test: pd.DataFrame,
                    y_train: pd.Series, y_test: pd.Series) -> Dict[str, float]:
     train_preds = model.predict(X_train)
@@ -123,18 +64,18 @@ def evaluate_model(model: Pipeline, X_train: pd.DataFrame, X_test: pd.DataFrame,
     return losses
 
 
-def fit_model(model_name: str, scaler_name: str, X_train: pd.DataFrame, X_test: pd.DataFrame,
+def fit_model(model_name: str, X_train: pd.DataFrame, X_test: pd.DataFrame,
                 y_train: pd.Series, y_test: pd.Series,
                 hparams: Dict[str, Any], seed: int) -> Tuple[Pipeline, Dict[str, float]]:
-    model = _build_pipeline(model_name, scaler_name, X_train, hparams, seed)
+    model = _get_regressor(model_name, hparams, seed)
     model.fit(X_train, y_train)
     losses = evaluate_model(model, X_train, X_test, y_train, y_test)
     return model, losses
 
 
-def search_parameters(model_name: str, scaler_name: str, X_train: pd.DataFrame,
+def search_parameters(model_name: str, X_train: pd.DataFrame,
                       y_train: pd.Series, seed: int) -> Tuple[Dict[str, Any], float]:
-    model = _build_pipeline(model_name, scaler_name, X_train, hparams={}, seed=seed)
+    model = _get_regressor(model_name, hparams={}, seed=seed)
 
     if model_name == "lr":
         param_grid = {
@@ -212,19 +153,16 @@ def save_model(model: Pipeline, path: str) -> str:
 def train_model(config, X_train, X_test, y_train, y_test):
     cfg = load_config(config)
 
-    model_name = cfg.train_model.model
-    scaler_name = cfg.train_model.scaler
-    log_dir = cfg.logging.folder
-    hparams = cfg.train_model.hparams
+    model_name = cfg['train_model']['model']
+    log_dir = cfg['logging']['folder']
+    hparams = cfg['train_model']['hparams']
     
-    search_mode = cfg.model.search_mode
-    prev_path = cfg.train_model.prev_path
-    seed = cfg.seed
+    search_mode = cfg['train_model']['search_mode']
+    prev_path = cfg['train_model']['prev_path']
+    seed = cfg['seed']
 
     if model_name not in SUPPORTED_MODELS:
         raise ValueError(f"Unsupported model '{model_name}'. Supported: {SUPPORTED_MODELS}")
-    if scaler_name not in SUPPORTED_SCALERS:
-        raise ValueError(f"Unsupported scaler '{scaler_name}'. Supported: {SUPPORTED_SCALERS}")
 
     if not hparams:
         hparams = dict(HPARAMS.get(model_name, {}))
@@ -232,7 +170,7 @@ def train_model(config, X_train, X_test, y_train, y_test):
     train_ts = datetime.now().strftime("%Y%m%d_%H%M%S")
 
     if search_mode:
-        best_params, best_cv_mae = search_parameters(model_name, scaler_name, X_train, y_train, seed)
+        best_params, best_cv_mae = search_parameters(model_name, X_train, y_train, seed)
         hparams.update(best_params)
     else:
         best_cv_mae = None
@@ -242,7 +180,7 @@ def train_model(config, X_train, X_test, y_train, y_test):
         model = finetune_model(model, X_train, y_train)
         losses = evaluate_model(model, X_train, X_test, y_train, y_test)
     else:
-        model, losses = fit_model(model_name, scaler_name, X_train, X_test, y_train, y_test, hparams, seed)
+        model, losses = fit_model(model_name, X_train, X_test, y_train, y_test, hparams, seed)
 
     if best_cv_mae is not None:
         losses["best_cv_mae"] = best_cv_mae
@@ -253,7 +191,6 @@ def train_model(config, X_train, X_test, y_train, y_test):
 
     summary = {
         "run_time": train_ts,
-        "scaler": scaler_name,
         "model": model_name,
         "search_mode": search_mode,
         "metrics": losses,
