@@ -1,0 +1,49 @@
+# 0. Paths
+path: &raw_db "raw_data.db" 
+path: &clean_db "clean_data.db" 
+path: &logs_dir "logs/"
+
+path: &raw_table "raw_table"
+path: &clean_table "clean_table"
+
+# 1. Data Collection
+sources:
+  - name: "insurance_main"
+    path: "data/motor_data11-14lats.csv"
+  - name: "insurance_extra"
+    path: "data/motor_data14-2018.csv"
+
+stream:
+  batch_size: 200
+  sleep_seconds: 1.0
+  max_batches: 1 
+  mix_sources: true
+
+storage:
+  db_path: *raw_db
+  raw_table: *raw_table
+  meta_table: "batch_meta"
+
+logging:
+  level: "INFO"
+  folder: *logs_dir
+  console: true
+
+# 2. Data Analysis
+data_analisys:
+  raw_db: *raw_db
+  raw_table: *raw_table
+  clean_db: *clean_db
+  clean_table: *clean_table
+  logs: *logs_dir
+  prev_data_path: null
+
+# 3. Data Preparation
+data_preparation:
+  clean_db: *clean_db
+  clean_table: *clean_table
+  output_path: "storage/prepared.parquet"
+  preprocessor_path: "storage/preprocessor.joblib"
+
+# 4. Model Train
+model_train:

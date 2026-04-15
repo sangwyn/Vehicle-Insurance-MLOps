@@ -7,12 +7,10 @@ python3 analyze_data.py --input data/motor_data11-14lats.csv --output_dir report
 
 '''
 
-import pandas as pd
 import json
 import numpy as np
 import argparse
 import os
-from pathlib import Path
 from typing import Dict, Any, Tuple
 from scipy.stats import kstest, ks_2samp
 from datetime import datetime
@@ -20,6 +18,52 @@ from datetime import datetime
 os.environ.setdefault("MPLCONFIGDIR", "/tmp/matplotlib")
 import matplotlib.pyplot as plt
 
+from utils import *
+
+def analyze_and_clean(config):
+    """
+    Полный второй этап: загрузка из raw_db, анализ, очистка,
+    сохранение в clean_db + отчёт в output_dir.
+    """
+    analisys_params = load_config(config)["data_analisys"]
+    raw_db         = analisys_params["raw_db"]
+    raw_table      = analisys_params["raw_table"]
+    clean_db       = analisys_params["clean_db"]
+    clean_table    = analisys_params["clean_table"]
+    logs           = analisys_params["logs"]
+    prev_data_path = analisys_params["prev_data_path"]
+    
+
+    df = load_data_from_db(raw_db, raw_table)
+    print(df)
+    df_clean, report = analyze(df)
+
+    print(12312312123)
+
+    ts_dir = Path(logs) / f"report_{datetime.now().isoformat().replace(':', '-')}"
+    ts_dir.mkdir(parents=True, exist_ok=True)
+
+    # clean → SQLite
+    save_data_to_db(df_clean, clean_db, table=clean_table)
+
+    # EDA + отчёт
+    eda_plot_path = str(ts_dir / "eda_top_categories.png")
+    report["eda"] = DataQualityEvaluator.EDA(df_clean, eda_plot_path)
+
+    # data drift, если есть предыдущий датасет
+    if prev_data_path:
+        prev_df = load_data(prev_data_path)
+        drift_results = monitor_drift(prev_df, df, str(ts_dir))
+        with open(ts_dir / "drift_report.json", "w", encoding="utf-8") as f:
+            json.dump(drift_results, f, ensure_ascii=False, indent=2, default=_json_default)
+
+    report_path = ts_dir / "data_quality_report.json"
+    with open(report_path, "w", encoding="utf-8") as f:
+        json.dump(report, f, ensure_ascii=False, indent=2, default=_json_default)
+
+    print(f"Очистка: {report['rows_before']} → {report['rows_after']} строк")
+    print(f"  clean data → {clean_db}")
+    print(f"  отчёт      → {report_path}")
 
 class DataQualityEvaluator:
     @staticmethod
@@ -93,51 +137,6 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def _read_table(path: Path) -> pd.DataFrame:
-    if path.suffix.lower() == ".csv":
-        return pd.read_csv(path)
-    if path.suffix.lower() in {".xls", ".xlsx"}:
-        return pd.read_excel(path)
-    raise ValueError(f"Unsupported file format: {path.suffix}")
-
-
-def load_data(path: str) -> pd.DataFrame:
-    input_path = Path(path)
-    if input_path.is_file():
-        source_file = input_path
-    elif input_path.is_dir():
-        candidates = []
-        for ext in ("*.csv", "*.xls", "*.xlsx"):
-            candidates.extend(sorted(input_path.glob(ext)))
-        if not candidates:
-            raise FileNotFoundError(f"No tabular files found in directory: {input_path}")
-
-        preferred = [p for p in candidates if p.name == "motor_data11-14lats.csv"]
-        source_file = preferred[0] if preferred else candidates[0]
-    else:
-        raise FileNotFoundError(f"Input path does not exist: {input_path}")
-
-    df = _read_table(source_file)
-    for col in ["INSR_BEGIN", "INSR_END"]:
-        if col in df.columns:
-            df[col] = pd.to_datetime(df[col], errors="coerce", format="%d-%b-%y")
-    return df
-
-
-def save_data(df: pd.DataFrame, path: str) -> str:
-    output_dir = Path(path)
-    output_dir.mkdir(parents=True, exist_ok=True)
-    save_path = output_dir / "clean_data.csv"
-
-    df_to_save = df.copy()
-    datetime_cols = df_to_save.select_dtypes(include=["datetime64[ns]", "datetime64[ns, UTC]"]).columns
-    for col in datetime_cols:
-        df_to_save[col] = df_to_save[col].dt.strftime("%Y-%m-%d")
-
-    df_to_save.to_csv(save_path, index=False)
-    return str(save_path)
-
-
 def kolmogorov_smirnov(prev_df:pd.DataFrame, df: pd.DataFrame, col: str, output_path: str = None) -> Tuple[float, float, float]:
     sample1, sample2 = prev_df[col].tolist(), df[col].tolist()
     ks_statistic, p_value = ks_2samp(sample1, sample2, alternative='two-sided', mode='auto')
@@ -172,7 +171,6 @@ def monitor_drift(prev_df: pd.DataFrame, df: pd.DataFrame, output_path: str = No
         }
 
     return drift_results
-
 
 def feature_engineering(df: pd.DataFrame):
     # Insurance duration (days)
