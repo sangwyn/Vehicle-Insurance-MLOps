@@ -126,7 +126,7 @@ class DataQualityEvaluator:
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser("Check data quality, auto EDA")
+    parser = argparse.ArgumentParser(description="Check data quality, auto EDA")
 
     parser.add_argument("--input", type=str, required=True, help="Path to .csv file or dir with .csv files containing data.")
     parser.add_argument("--output_dir", type=str, required=True, help="Path to dir where reports will be saved.")
@@ -172,6 +172,7 @@ def monitor_drift(prev_df: pd.DataFrame, df: pd.DataFrame, output_path: str = No
 
     return drift_results
 
+ 
 def feature_engineering(df: pd.DataFrame):
     # Insurance duration (days)
     df['insr_duration'] = (df['INSR_END'] - df['INSR_BEGIN']).dt.days
@@ -291,7 +292,7 @@ def main():
     df = load_data(args.input)
     df_clean, report = analyze(df)
 
-    output_dir = Path(args.output_dir + f'/report_{str(datetime.now().isoformat())}')
+    output_dir = Path(args.output_dir + f'/anal_report_{str(datetime.now().isoformat())}')
     output_dir.mkdir(parents=True, exist_ok=True)
 
     if args.prev_data is not None:
