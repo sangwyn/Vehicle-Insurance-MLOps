@@ -78,7 +78,7 @@ def prepare(config):
     if TARGET_COL not in df.columns:
         raise ValueError(f"Таргет '{TARGET_COL}' не найден в {clean_table}")
 
-    y = df[TARGET_COL].astype(float)                 # регрессия: target — число
+    y = df[TARGET_COL].astype(float)
     X = df.drop(columns=[TARGET_COL])
     X = X.replace([np.inf, -np.inf], np.nan)
 
