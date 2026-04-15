@@ -1,6 +1,6 @@
 import json
 import logging
-import sqlite3
+
 import time
 from datetime import datetime
 from pathlib import Path
@@ -9,13 +9,15 @@ import numpy as np
 import pandas as pd
 import yaml
 
+from utils import *
+
 logger = logging.getLogger("collector")
 
 def setup_logger(log_cfg):
     level_name = log_cfg.get("level", "INFO").upper()
     level = getattr(logging, level_name, logging.INFO)
 
-    log_file = log_cfg.get("file", "logs/collector.log")
+    log_file = log_cfg.get("folder", "logs/") + "collector.log"
     console = log_cfg.get("console", True)
 
     Path(log_file).parent.mkdir(parents=True, exist_ok=True)
@@ -39,11 +41,6 @@ def setup_logger(log_cfg):
 
     logger.propagate = False
     logger.info(f"Логгер инициализирован (level={level_name}, file={log_file})")
-
-
-def read_csv_to_pd(csv_path):
-    df = pd.read_csv(csv_path)
-    return df
 
 def read_sources(sources_cfg):
     frames = {}
@@ -142,8 +139,6 @@ def compute_batch_meta(batch, batch_id, source_name="unknown"):
     }
     return meta
 
-
-
 def store_batch_meta(meta, db, table="batch_meta"):
     row = {
         "batch_id": meta["batch_id"],
@@ -160,19 +155,8 @@ def store_batch_meta(meta, db, table="batch_meta"):
     with sqlite3.connect(db) as conn:
         df_meta.to_sql(table, conn, if_exists="append", index=False)
 
-
-def load_config(path="config.yaml"):
-    config_path = Path(path)
-    if not config_path.exists():
-        raise FileNotFoundError(f"No such config: {config_path}")
-    
-    with open(config_path, "r", encoding="utf-8") as f:
-        cfg = yaml.safe_load(f)
-    
-    return cfg
-
-def collect_data():
-    cfg = load_config("config.yaml")
+def collect(config):
+    cfg = load_config(config)
     setup_logger(cfg.get("logging", {}))
 
     logger.info("=== Начало сбора данных ===")
@@ -224,7 +208,3 @@ def collect_data():
     except Exception:
         logger.exception("Фатальная ошибка в collect_data")
         raise
-
-
-if __name__ == "__main__":
-    collect_data()
