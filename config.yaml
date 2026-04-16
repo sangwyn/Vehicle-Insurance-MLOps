@@ -46,7 +46,7 @@ data_preparation:
   clean_table: *clean_table
   output_path: "storage/prepared.parquet"
   preprocessor_path: "storage/preprocessor.joblib"
-  scaler_name: "standart"
+  scaler_name: "standard"
 
 # 4. Model Train
 train_model:
@@ -54,3 +54,12 @@ train_model:
   hparams: {}
   search_mode: False
   prev_path: null
+
+# 5. Model Validation
+model_validation:
+  scheme: "cv"
+  n_splits: 5
+  logs: *logs_dir
+  thresholds:
+    max_mae: 10000
+    min_r2: 0.0

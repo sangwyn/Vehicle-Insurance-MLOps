@@ -3,6 +3,7 @@ from Data_Analysis.analyze_data import analyze_and_clean
 from Data_Preparation.data_preparation import prepare
 from Model_Training.model import train_model
 from sklearn.model_selection import train_test_split
+from Model_Validation.model_validation import validate_tree_model
 import numpy as np
 from utils import load_config
 
@@ -35,6 +36,18 @@ def main():
 
     # Part 4: train model
     model, losses = train_model(config, X_train, X_test, y_train, y_test)
+
+    # Part 5: Validate model
+    report = validate_tree_model(
+        config_path=config,
+        model=model,
+        X_train=X_train,
+        y_train=y_train,
+        X_test=X_test,
+        y_test=y_test,
+    )
+
+    print(report)
 
 
 if __name__ == "__main__":
