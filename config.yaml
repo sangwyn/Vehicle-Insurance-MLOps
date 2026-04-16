@@ -6,6 +6,8 @@ path: &logs_dir "logs/"
 path: &raw_table "raw_table"
 path: &clean_table "clean_table"
 
+seed: 42
+
 # 1. Data Collection
 sources:
   - name: "insurance_main"
@@ -47,4 +49,8 @@ data_preparation:
   scaler_name: "standart"
 
 # 4. Model Train
-model_train:
+train_model:
+  model: 'dt'
+  hparams: {}
+  search_mode: False
+  prev_path: null
