@@ -20,7 +20,13 @@ def main():
         random_state=42,      # фиксируем для воспроизводимости
     )
 
-    print(f"Train: {X_train.shape}, Test: {X_test.shape}")    
+    print(f"Train: {X_train.shape}, Test: {X_test.shape}")   
+
+
+
+
+
+
 
 if __name__ == "__main__":
     main()

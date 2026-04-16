@@ -6,7 +6,11 @@ import pandas as pd
 from sklearn.compose import ColumnTransformer
 from sklearn.impute import SimpleImputer
 from sklearn.pipeline import Pipeline
-from sklearn.preprocessing import OrdinalEncoder
+from sklearn.compose import ColumnTransformer
+from sklearn.impute import SimpleImputer
+from sklearn.pipeline import Pipeline
+from sklearn.preprocessing import OneHotEncoder, MinMaxScaler, StandardScaler
+
 
 from utils import *
 
@@ -42,17 +46,27 @@ CATEGORICAL_COLS = [
     "insr_end_season",
 ]
 
-def build_preprocessor():
+
+SUPPORTED_SCALERS = ["minmax", "standard"]
+
+def _get_scaler(scaler_name: str):
+    if scaler_name == "minmax":
+        return MinMaxScaler()
+    if scaler_name == "standard":
+        return StandardScaler()
+    raise ValueError(
+        f"Unsupported scaler name: {scaler_name}. Supported: {SUPPORTED_SCALERS}"
+    )
+
+def build_preprocessor(scaler_name: str = "standard"):
     numeric_pipeline = Pipeline([
         ("imputer", SimpleImputer(strategy="median")),
+        ("scaler", _get_scaler(scaler_name)),
     ])
 
     categorical_pipeline = Pipeline([
         ("imputer", SimpleImputer(strategy="most_frequent")),
-        ("ordinal", OrdinalEncoder(
-            handle_unknown="use_encoded_value",
-            unknown_value=-1,
-        )),
+        ("onehot", OneHotEncoder(handle_unknown="ignore", sparse_output=False)),
     ])
 
     preprocessor = ColumnTransformer(
@@ -67,10 +81,11 @@ def build_preprocessor():
 
 def prepare(config):
     preparation_params = load_config(config)["data_preparation"]
-    clean_db           = preparation_params["clean_db"]
-    clean_table        = preparation_params["clean_table"]
-    output_path        = preparation_params["output_path"]
-    preprocessor_path  = preparation_params["preprocessor_path"]
+    clean_db          = preparation_params["clean_db"]
+    clean_table       = preparation_params["clean_table"]
+    output_path       = preparation_params["output_path"]
+    preprocessor_path = preparation_params["preprocessor_path"]
+    scaler_name       = preparation_params.get("scaler_name", "standard")
 
     df = load_data_from_db(clean_db, table=clean_table)
     df = df.drop(columns=[c for c in DROP_COLS if c in df.columns], errors="ignore")
@@ -82,7 +97,7 @@ def prepare(config):
     X = df.drop(columns=[TARGET_COL])
     X = X.replace([np.inf, -np.inf], np.nan)
 
-    preprocessor = build_preprocessor()
+    preprocessor = build_preprocessor(scaler_name=scaler_name)
     X_transformed = preprocessor.fit_transform(X)
 
     feature_names = preprocessor.get_feature_names_out()

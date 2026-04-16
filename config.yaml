@@ -44,6 +44,7 @@ data_preparation:
   clean_table: *clean_table
   output_path: "storage/prepared.parquet"
   preprocessor_path: "storage/preprocessor.joblib"
+  scaler_name: "standart"
 
 # 4. Model Train
 model_train:
