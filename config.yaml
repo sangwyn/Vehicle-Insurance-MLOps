@@ -54,6 +54,7 @@ train_model:
   hparams: {}
   search_mode: False
   prev_path: null
+  save_path: "model/"
 
 # 5. Model Validation
 model_validation:

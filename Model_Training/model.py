@@ -161,6 +161,8 @@ def train_model(config, X_train, X_test, y_train, y_test):
     prev_path = cfg['train_model']['prev_path']
     seed = cfg['seed']
 
+    save_path = cfg["train_model"]["save_path"]
+
     if model_name not in SUPPORTED_MODELS:
         raise ValueError(f"Unsupported model '{model_name}'. Supported: {SUPPORTED_MODELS}")
 
@@ -188,6 +190,7 @@ def train_model(config, X_train, X_test, y_train, y_test):
     output_dir = Path(log_dir) / f"train_report_{train_ts}"
     output_dir.mkdir(parents=True, exist_ok=True)
     model_path = save_model(model, str(output_dir / f"model_{model_name}.joblib"))
+    model_path = save_model(model, save_path + f"/model_{model_name}.joblib")
 
     summary = {
         "run_time": train_ts,
