@@ -154,7 +154,7 @@ def store_batch_meta(meta, db, table="batch_meta"):
     with sqlite3.connect(db) as conn:
         df_meta.to_sql(table, conn, if_exists="append", index=False)
 
-def collect(config):
+def collect(config, override_csv=None):
     cfg = load_config(config)
     setup_logger(cfg.get("logging", {}))
 
@@ -162,6 +162,8 @@ def collect(config):
 
     try:
         sources_cfg = cfg["sources"]
+        if override_csv:
+            sources_cfg = [{"name": "user_input", "path": override_csv}]
         batch_sz    = cfg["stream"]["batch_size"]
         sleep_s     = cfg["stream"]["sleep_seconds"]
         max_batch   = cfg["stream"]["max_batches"]

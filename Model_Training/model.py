@@ -79,22 +79,22 @@ def search_parameters(model_name: str, X_train: pd.DataFrame,
 
     if model_name == "lr":
         param_grid = {
-            "regressor__alpha": [1e-6, 1e-5, 1e-4],
-            "regressor__eta0": [1e-3, 1e-2, 1e-1],
-            "regressor__learning_rate": ["optimal", "adaptive"],
-            "regressor__fit_intercept": [True, False]
+            "alpha": [1e-6, 1e-5, 1e-4],
+            "eta0": [1e-3, 1e-2, 1e-1],
+            "learning_rate": ["optimal", "adaptive"],
+            "fit_intercept": [True, False]
         }
     elif model_name == "knn":
         param_grid = {
-            "regressor__n_neighbors": [3, 5, 11, 21],
-            "regressor__weights": ["uniform", "distance"],
-            "regressor__p": [1, 2]
+            "n_neighbors": [3, 5, 11, 21],
+            "weights": ["uniform", "distance"],
+            "p": [1, 2]
         }
     elif model_name == "dt":
         param_grid = {
-            "regressor__max_depth": [5, 10, 20, None],
-            "regressor__min_samples_split": [2, 10, 20],
-            "regressor__min_samples_leaf": [1, 5, 10]
+            "max_depth": [5, 10, 20, None],
+            "min_samples_split": [2, 10, 20],
+            "min_samples_leaf": [1, 5, 10]
         }
     else:
         raise ValueError(f"Unrecognized model name: {model_name}")
@@ -107,28 +107,58 @@ def search_parameters(model_name: str, X_train: pd.DataFrame,
         n_jobs=-1
     )
     search.fit(X_train, y_train)
-
-    best_params = {}
-    for key, value in search.best_params_.items():
-        best_params[key.replace("regressor__", "")] = value
-
+    best_params = dict(search.best_params_)
     best_cv_mae = float(-search.best_score_)
     return best_params, best_cv_mae
 
 
-def finetune_model(model: Pipeline, X_train: pd.DataFrame, y_train: pd.Series) -> Pipeline:
-    preprocessor = model.named_steps["preprocessor"]
-    regressor = model.named_steps["regressor"]
-    X_new = preprocessor.transform(X_train)
+def finetune_model(model, X_train: pd.DataFrame, y_train: pd.Series):
+    X_new = X_train if isinstance(X_train, pd.DataFrame) else np.asarray(X_train)
     y_new = np.asarray(y_train, dtype=float).reshape(-1)
 
-    if hasattr(regressor, "partial_fit"):
-        regressor.partial_fit(X_new, y_new)
+    if hasattr(model, "partial_fit"):
+        model.partial_fit(X_new, y_new)
+        return model
+
+    if isinstance(model, DecisionTreeRegressor):
+        X_array = X_new.values if isinstance(X_new, pd.DataFrame) else X_new
+        if X_array.shape[1] != model.n_features_in_:
+            raise ValueError(
+                f"Feature mismatch for DecisionTreeRegressor: "
+                f"model expects {model.n_features_in_}, got {X_array.shape[1]}"
+            )
+        leaf_ids = model.apply(X_new)
+        unique_leaf_ids = np.unique(leaf_ids)
+        for leaf_id in unique_leaf_ids:
+            mask = (leaf_ids == leaf_id)
+            cnt_new = int(mask.sum())
+            if cnt_new == 0:
+                continue
+            sum_new = float(y_new[mask].sum())
+
+            old_cnt = int(model.tree_.n_node_samples[leaf_id])
+            old_mean = float(model.tree_.value[leaf_id, 0, 0])
+            total_cnt = old_cnt + cnt_new
+            new_mean = (old_mean * old_cnt + sum_new) / total_cnt
+
+            model.tree_.value[leaf_id, 0, 0] = new_mean
+            model.tree_.n_node_samples[leaf_id] = total_cnt
+            model.tree_.weighted_n_node_samples[leaf_id] = (
+                model.tree_.weighted_n_node_samples[leaf_id] + float(cnt_new)
+            )
+        return model
+
+    if isinstance(model, KNeighborsRegressor):
+        old_X = model._fit_X
+        old_y = np.asarray(model._y, dtype=float).reshape(-1)
+        X_array = X_new.values if isinstance(X_new, pd.DataFrame) else X_new
+        all_X = np.vstack([old_X, X_array])
+        all_y = np.concatenate([old_y, y_new])
+        model.fit(all_X, all_y)
         return model
 
     raise NotImplementedError(
-        f"Regressor {type(regressor).__name__} does not support partial_fit. "
-        "Use model 'lr' (SGD-based) for incremental finetune."
+        f"Finetune is not implemented for {type(model).__name__}."
     )
 
 
@@ -209,4 +239,3 @@ def train_model(config, X_train, X_test, y_train, y_test):
     }, ensure_ascii=False))
 
     return model, losses
-
