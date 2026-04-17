@@ -79,7 +79,7 @@ def build_preprocessor(scaler_name: str = "standard"):
     )
     return preprocessor
 
-def prepare(config):
+def prepare(config, fit_preprocessor: bool = True):
     preparation_params = load_config(config)["data_preparation"]
     clean_db          = preparation_params["clean_db"]
     clean_table       = preparation_params["clean_table"]
@@ -97,19 +97,35 @@ def prepare(config):
     X = df.drop(columns=[TARGET_COL])
     X = X.replace([np.inf, -np.inf], np.nan)
 
-    preprocessor = build_preprocessor(scaler_name=scaler_name)
-    X_transformed = preprocessor.fit_transform(X)
+    if fit_preprocessor:
+        preprocessor = build_preprocessor(scaler_name=scaler_name)
+        X_transformed = preprocessor.fit_transform(X)
+        Path(preprocessor_path).parent.mkdir(parents=True, exist_ok=True)
+        joblib.dump(preprocessor, preprocessor_path)
+    else:
+        if not Path(preprocessor_path).exists():
+            raise FileNotFoundError(
+                f"Preprocessor not found at '{preprocessor_path}'. "
+                "Run training/full_pipeline first or call prepare(..., fit_preprocessor=True)."
+            )
+        preprocessor = joblib.load(preprocessor_path)
+        X_transformed = preprocessor.transform(X)
 
     feature_names = preprocessor.get_feature_names_out()
     X_prepared = pd.DataFrame(X_transformed, columns=feature_names, index=X.index)
     X_prepared[TARGET_COL] = y.values
 
     Path(output_path).parent.mkdir(parents=True, exist_ok=True)
-    X_prepared.to_parquet(output_path, index=False)
-    joblib.dump(preprocessor, preprocessor_path)
+    saved_data_path = output_path
+    try:
+        X_prepared.to_parquet(output_path, index=False)
+    except ImportError:
+        fallback_path = str(Path(output_path).with_suffix(".csv"))
+        X_prepared.to_csv(fallback_path, index=False)
+        saved_data_path = fallback_path
 
     print(f"Препроцессинг: {X_prepared.shape[0]} строк, {X_prepared.shape[1]-1} фич")
-    print(f"  данные    → {output_path}")
-    print(f"  препроц.  → {preprocessor_path}")
+    print(f"  данные    → {saved_data_path}")
+    print(f"  препроц.  → {preprocessor_path} ({'fit' if fit_preprocessor else 'reuse'})")
 
     return X_prepared, preprocessor
