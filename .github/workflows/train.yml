@@ -35,20 +35,64 @@ jobs:
         run: |
           python full_pipeline.py --config configs/default.yaml
 
+      - name: Create Job Summary
+        run: |
+          python << 'PY'
+          import json, glob, os
+          from pathlib import Path
+
+          reports = sorted(glob.glob("logs/train_report_*/train_report.json"))
+          if not reports:
+              print("No training reports found.")
+              exit(0)
+
+          md = "## Model Training Report\n\n"
+          md += "| Run | Model | MAE | RMSE | R2 |\n"
+          md += "|-----|-------|-----|------|----|\n"
+
+          for r in reports:
+              with open(r) as f:
+                  data = json.load(f)
+              run = Path(r).parent.name
+              model = data.get("model", "-")
+              m = data.get("metrics", {})
+              md += f"| {run} | {model} | {m.get('test_mae', '-')} | {m.get('test_rmse', '-')} | {m.get('test_r2', '-')} |\n"
+
+          print(md)
+          PY
+        shell: bash
+
       - name: Upload logs artifact
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: training-logs-${{ github.run_id }}
-          path: |
-            logs/**
+          path: logs/**
+          retention-days: 30
           if-no-files-found: warn
 
-      - name: Upload model artifact
+      - name: Upload model release artifact
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: trained-model-${{ github.run_id }}
+          name: model-release
           path: |
             model/*.joblib
+            requirements.txt
+            main.py
+            configs/default.yaml
+            utils.py
+            Data_Preparation/**
+          retention-days: 30
+          if-no-files-found: warn
+
+      - name: Upload collector state artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: collector-state
+          path: |
+            storage/preprocessor.joblib
+            configs/default.yaml
+          retention-days: 30
           if-no-files-found: warn

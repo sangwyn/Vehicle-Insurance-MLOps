@@ -104,3 +104,37 @@ python main.py --mode summary --config configs/default.yaml --save_dir results
 - `train_model` — этап 4;
 - `model_validation` — этап 5;
 - `logging` — путь и формат логов.
+
+## Развёртывание
+
+### Использование артефактов
+
+**Actions → <run> → Artifacts**:
+- **`training-logs-<id>`** — все логи `logs/`
+- **`model-release`** — сериализованная модель `.joblib` + `main.py`, `requirements.txt`, `configs/default.yaml`, `utils.py`
+- **`collector-state`** — `storage/preprocessor.joblib`
+
+### Inference из артефактов
+
+1) Скачать + распаковать
+
+```bash
+unzip model-release.zip -d model-release/
+cd model-release/
+```
+2) Установить зависимости
+
+```bash
+pip install -r requirements.txt
+```
+
+3) Инференс
+
+```bash
+python main.py \
+  --mode inference \
+  --config configs/default.yaml \
+  --input my_data.csv \
+  --model model/model_dt.joblib \
+  --save_dir results
+```
